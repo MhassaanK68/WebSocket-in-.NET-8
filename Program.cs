@@ -4,49 +4,51 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
+// Serve static files from wwwroot
+app.UseStaticFiles();
+app.UseDefaultFiles();
+
+// Enable WebSocket support
 app.UseWebSockets();
 
-// Middleware to ensure only WebSocket requests are allowed
+app.MapGet("/", async context =>
+{
+    context.Response.ContentType = "text/html";
+    await context.Response.SendFileAsync("wwwroot/index.html");
+});
+
+// Middleware to handle WebSocket requests
 app.Use(async (context, next) =>
 {
     if (context.WebSockets.IsWebSocketRequest)
     {
-        WebSocket websocket = await context.WebSockets.AcceptWebSocketAsync();
-        await WebSocketHandler(websocket);
+        WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+        await WebSocketHandler(webSocket);
     }
-    else {
+    else
+    {
         await next();
     }
-
 });
 
-
-async Task WebSocketHandler(WebSocket websocket)
+async Task WebSocketHandler(WebSocket webSocket)
 {
-    // Buffer of 4 KB
     var buffer = new byte[1024 * 4];
 
-    // Data sent from client saved into buffer of 4KB
-    WebSocketReceiveResult result = await websocket.ReceiveAsync(buffer, CancellationToken.None);
+    string responseMessage = "Hey!, I Got Your Message ✅";
+    byte[] responseBuffer = Encoding.UTF8.GetBytes(responseMessage);
 
-    // Creating the response message
-    string MyResponse = "Hey!, I Got Your Message ✅";
-    byte[] MyResponseBuffer = Encoding.UTF8.GetBytes(MyResponse);
-
-    // Keep receiving data from client untill websocket is closed 
-    while (!websocket.CloseStatus.HasValue)
+    WebSocketReceiveResult result;
+    do
     {
-        // Send Acknowledgement
-        await websocket.SendAsync(MyResponseBuffer, WebSocketMessageType.Text, true, CancellationToken.None);
-        // Wait for next message
-        result = await websocket.ReceiveAsync(buffer, CancellationToken.None);
-    }
+        result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+        if (result.MessageType == WebSocketMessageType.Text)
+        {
+            await webSocket.SendAsync(new ArraySegment<byte>(responseBuffer), WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+    } while (!result.CloseStatus.HasValue);
 
-    // Close the websocket connection when while isnt running anymore
-    await websocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
-
+    await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
 }
-
-app.MapGet("/", () => "This is only for WebSocket Connections!!!");
 
 app.Run();
